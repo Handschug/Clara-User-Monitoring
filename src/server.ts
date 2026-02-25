@@ -40,21 +40,25 @@ let mcpClient: Client | null = null;
 const MCP_AUTH_DIR = path.join(homedir(), '.mcp-auth', 'mcp-remote-0.1.37');
 const MCP_AUTH_HASH = 'ae2ad9697b94cadb9a498630e77901f0';
 
-// eslint-disable-next-line no-control-regex
-const stripControlChars = (s: string) => s.replace(/[\x00-\x1F\x7F]/g, '');
-
 function seedMcpTokenFiles(): void {
-  const tokensJson = process.env.CLARA_MCP_TOKENS_JSON;
+  // Support both plain JSON and Base64-encoded env vars.
+  // Base64 avoids Railway's env var encoding corrupting the JSON.
+  const tokensB64      = process.env.CLARA_MCP_TOKENS_B64;
+  const tokensJson     = tokensB64
+    ? Buffer.from(tokensB64, 'base64').toString('utf-8')
+    : process.env.CLARA_MCP_TOKENS_JSON;
+
   if (!tokensJson) {
-    console.log('[MCP] No CLARA_MCP_TOKENS_JSON env var found — OAuth will be required');
+    console.log('[MCP] No token env vars found — OAuth will be required');
     return;
   }
-  // Strip literal control characters that Railway's UI may inject when pasting,
-  // then re-serialize to produce clean compact JSON before writing to disk.
-  const tokensNormalized = JSON.stringify(JSON.parse(stripControlChars(tokensJson)));
+
   mkdirSync(MCP_AUTH_DIR, { recursive: true });
-  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensNormalized);
-  console.log('[MCP] Tokens file seeded (refresh_token present:', tokensNormalized.includes('"refresh_token"'), ')');
+  // Write the decoded JSON directly — no further transformation needed
+  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensJson.trim());
+
+  // Debug: log first 80 chars of what was written so we can verify on Railway
+  console.log('[MCP] Tokens file written, starts with:', tokensJson.trim().substring(0, 80));
 }
 
 // Seed before the first MCP connection attempt
@@ -71,13 +75,15 @@ async function getMcpClient(): Promise<Client> {
 
   const mcpArgs: string[] = ['mcp-remote', 'https://app.clara-agent.de/api/mcp'];
 
-  // Pass client info directly via CLI arg — bypasses file-based lookup entirely,
-  // which avoids Zod validation failures caused by Railway env var encoding issues.
-  const clientInfoJson = process.env.CLARA_MCP_CLIENT_INFO_JSON;
+  // Pass client info directly via CLI arg — bypasses file-based lookup entirely.
+  // Support both plain JSON and Base64-encoded env vars.
+  const clientInfoB64  = process.env.CLARA_MCP_CLIENT_INFO_B64;
+  const clientInfoJson = clientInfoB64
+    ? Buffer.from(clientInfoB64, 'base64').toString('utf-8')
+    : process.env.CLARA_MCP_CLIENT_INFO_JSON;
   if (clientInfoJson) {
-    const clientInfoClean = stripControlChars(clientInfoJson);
-    mcpArgs.push('--static-oauth-client-info', clientInfoClean);
-    console.log('[MCP] Using --static-oauth-client-info from env var');
+    mcpArgs.push('--static-oauth-client-info', clientInfoJson.trim());
+    console.log('[MCP] Using --static-oauth-client-info, client_id present:', clientInfoJson.includes('"client_id"'));
   }
 
   const transport = new StdioClientTransport({
