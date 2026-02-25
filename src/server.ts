@@ -40,24 +40,21 @@ let mcpClient: Client | null = null;
 const MCP_AUTH_DIR = path.join(homedir(), '.mcp-auth', 'mcp-remote-0.1.37');
 const MCP_AUTH_HASH = 'ae2ad9697b94cadb9a498630e77901f0';
 
+// eslint-disable-next-line no-control-regex
+const stripControlChars = (s: string) => s.replace(/[\x00-\x1F\x7F]/g, '');
+
 function seedMcpTokenFiles(): void {
-  const tokensJson    = process.env.CLARA_MCP_TOKENS_JSON;
-  const clientInfoJson = process.env.CLARA_MCP_CLIENT_INFO_JSON;
-  if (!tokensJson || !clientInfoJson) {
-    console.log('[MCP] No token env vars found — expecting mcp-remote to handle OAuth locally');
+  const tokensJson = process.env.CLARA_MCP_TOKENS_JSON;
+  if (!tokensJson) {
+    console.log('[MCP] No CLARA_MCP_TOKENS_JSON env var found — OAuth will be required');
     return;
   }
-  // Strip literal control characters (newlines, carriage returns, etc.) that
-  // Railway's UI may inject when pasting multi-line text, then re-serialize
-  // to produce clean compact JSON before writing to disk.
-  // eslint-disable-next-line no-control-regex
-  const strip = (s: string) => JSON.stringify(JSON.parse(s.replace(/[\x00-\x1F\x7F]/g, '')));
-  const tokensNormalized     = strip(tokensJson);
-  const clientInfoNormalized = strip(clientInfoJson);
+  // Strip literal control characters that Railway's UI may inject when pasting,
+  // then re-serialize to produce clean compact JSON before writing to disk.
+  const tokensNormalized = JSON.stringify(JSON.parse(stripControlChars(tokensJson)));
   mkdirSync(MCP_AUTH_DIR, { recursive: true });
   writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensNormalized);
-  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_client_info.json`), clientInfoNormalized);
-  console.log('[MCP] Token files seeded from environment variables');
+  console.log('[MCP] Tokens file seeded (refresh_token present:', tokensNormalized.includes('"refresh_token"'), ')');
 }
 
 // Seed before the first MCP connection attempt
@@ -72,9 +69,20 @@ async function getMcpClient(): Promise<Client> {
 
   console.log('[MCP] Spawning mcp-remote subprocess...');
 
+  const mcpArgs: string[] = ['mcp-remote', 'https://app.clara-agent.de/api/mcp'];
+
+  // Pass client info directly via CLI arg — bypasses file-based lookup entirely,
+  // which avoids Zod validation failures caused by Railway env var encoding issues.
+  const clientInfoJson = process.env.CLARA_MCP_CLIENT_INFO_JSON;
+  if (clientInfoJson) {
+    const clientInfoClean = stripControlChars(clientInfoJson);
+    mcpArgs.push('--static-oauth-client-info', clientInfoClean);
+    console.log('[MCP] Using --static-oauth-client-info from env var');
+  }
+
   const transport = new StdioClientTransport({
     command: 'npx',
-    args: ['mcp-remote', 'https://app.clara-agent.de/api/mcp'],
+    args: mcpArgs,
   });
 
   const client = new Client(
