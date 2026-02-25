@@ -47,9 +47,13 @@ function seedMcpTokenFiles(): void {
     console.log('[MCP] No token env vars found — expecting mcp-remote to handle OAuth locally');
     return;
   }
+  // Re-serialize to strip any control characters or formatting that may have
+  // been introduced when pasting the JSON into Railway environment variables.
+  const tokensNormalized     = JSON.stringify(JSON.parse(tokensJson));
+  const clientInfoNormalized = JSON.stringify(JSON.parse(clientInfoJson));
   mkdirSync(MCP_AUTH_DIR, { recursive: true });
-  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensJson);
-  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_client_info.json`), clientInfoJson);
+  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensNormalized);
+  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_client_info.json`), clientInfoNormalized);
   console.log('[MCP] Token files seeded from environment variables');
 }
 
