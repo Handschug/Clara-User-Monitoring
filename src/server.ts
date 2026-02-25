@@ -37,7 +37,7 @@ let mcpClient: Client | null = null;
 // On Railway (or any remote server) we can't do the browser OAuth flow, so we
 // pre-seed these files from env vars before spawning mcp-remote.
 // The hash is derived from the Clara MCP server URL and is stable.
-const MCP_AUTH_DIR = path.join(homedir(), '.mcp-auth', 'mcp-remote-0.1.37');
+const MCP_AUTH_DIR = path.join(homedir(), '.mcp-auth', 'mcp-remote-0.1.38');
 const MCP_AUTH_HASH = 'ae2ad9697b94cadb9a498630e77901f0';
 
 function seedMcpTokenFiles(): void {
