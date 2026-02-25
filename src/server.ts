@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type {
   ApiStatus,
   OrgsResponse,
@@ -27,22 +27,56 @@ const PORT = process.env.PORT ?? 3000;
 
 let mcpClient: Client | null = null;
 
-// clara-analysis MCP server connection via mcp-remote.
-// On first connect a browser window will open for OAuth — log in with your Clara admin account.
-// The token is cached locally by mcp-remote for subsequent runs.
-const MCP_COMMAND = 'npx';
-const MCP_ARGS = ['mcp-remote', 'https://app.clara-agent.de/api/mcp'];
+// clara-analysis MCP server connection via StreamableHTTP.
+// Uses a refresh_token (stored in CLARA_MCP_REFRESH_TOKEN env var) to obtain
+// a fresh access token on each cold start — no browser OAuth flow required.
+const MCP_URL = 'https://app.clara-agent.de/api/mcp';
+const MCP_TOKEN_URL = 'https://app.clara-agent.de/api/auth/token';
+
+async function getAccessToken(): Promise<string> {
+  const refreshToken = process.env.CLARA_MCP_REFRESH_TOKEN;
+  const clientId = process.env.CLARA_MCP_CLIENT_ID;
+
+  if (!refreshToken || !clientId) {
+    throw new Error('CLARA_MCP_REFRESH_TOKEN and CLARA_MCP_CLIENT_ID env vars must be set');
+  }
+
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+
+  const res = await fetch(MCP_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Token refresh failed: ${res.status} ${res.statusText}: ${text}`);
+  }
+
+  const data = await res.json() as { access_token: string };
+  return data.access_token;
+}
 
 async function getMcpClient(): Promise<Client> {
   if (mcpClient) return mcpClient;
 
-  console.log(`[MCP] Connecting to clara-analysis via: ${MCP_COMMAND} ${MCP_ARGS.join(' ')}`);
-  console.log('[MCP] If this is your first run, a browser window will open for OAuth login.');
+  console.log('[MCP] Connecting to clara-analysis via StreamableHTTP...');
 
-  const transport = new StdioClientTransport({
-    command: MCP_COMMAND,
-    args: MCP_ARGS,
-  });
+  const accessToken = await getAccessToken();
+
+  const transport = new StreamableHTTPClientTransport(
+    new URL(MCP_URL),
+    {
+      requestInit: {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    }
+  );
 
   const client = new Client(
     { name: 'clara-dashboard', version: '1.0.0' },
