@@ -1,8 +1,10 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { mkdirSync, writeFileSync } from 'fs';
+import { homedir } from 'os';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type {
   ApiStatus,
   OrgsResponse,
@@ -27,58 +29,46 @@ const PORT = process.env.PORT ?? 3000;
 
 let mcpClient: Client | null = null;
 
-// clara-analysis MCP server connection via StreamableHTTP.
-// Uses a refresh_token (stored in CLARA_MCP_REFRESH_TOKEN env var) to obtain
-// a fresh access token on each cold start — no browser OAuth flow required.
-const MCP_URL = 'https://app.clara-agent.de/api/mcp';
-const MCP_TOKEN_URL = 'https://app.clara-agent.de/api/auth/oauth2/token';
+// ---------------------------------------------------------------------------
+// MCP token file seeding
+// ---------------------------------------------------------------------------
 
-async function getAccessToken(): Promise<string> {
-  const refreshToken = process.env.CLARA_MCP_REFRESH_TOKEN;
-  const clientId = process.env.CLARA_MCP_CLIENT_ID;
+// mcp-remote caches OAuth tokens in ~/.mcp-auth/mcp-remote-<version>/<hash>_tokens.json
+// On Railway (or any remote server) we can't do the browser OAuth flow, so we
+// pre-seed these files from env vars before spawning mcp-remote.
+// The hash is derived from the Clara MCP server URL and is stable.
+const MCP_AUTH_DIR = path.join(homedir(), '.mcp-auth', 'mcp-remote-0.1.37');
+const MCP_AUTH_HASH = 'ae2ad9697b94cadb9a498630e77901f0';
 
-  if (!refreshToken || !clientId) {
-    throw new Error('CLARA_MCP_REFRESH_TOKEN and CLARA_MCP_CLIENT_ID env vars must be set');
+function seedMcpTokenFiles(): void {
+  const tokensJson    = process.env.CLARA_MCP_TOKENS_JSON;
+  const clientInfoJson = process.env.CLARA_MCP_CLIENT_INFO_JSON;
+  if (!tokensJson || !clientInfoJson) {
+    console.log('[MCP] No token env vars found — expecting mcp-remote to handle OAuth locally');
+    return;
   }
-
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-    client_id: clientId,
-    resource: 'https://app.clara-agent.de/',
-    scope: 'openid profile email offline_access',
-  });
-
-  const res = await fetch(MCP_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Token refresh failed: ${res.status} ${res.statusText}: ${text}`);
-  }
-
-  const data = await res.json() as { access_token: string };
-  return data.access_token;
+  mkdirSync(MCP_AUTH_DIR, { recursive: true });
+  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensJson);
+  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_client_info.json`), clientInfoJson);
+  console.log('[MCP] Token files seeded from environment variables');
 }
+
+// Seed before the first MCP connection attempt
+seedMcpTokenFiles();
+
+// ---------------------------------------------------------------------------
+// MCP client setup
+// ---------------------------------------------------------------------------
 
 async function getMcpClient(): Promise<Client> {
   if (mcpClient) return mcpClient;
 
-  console.log('[MCP] Connecting to clara-analysis via StreamableHTTP...');
+  console.log('[MCP] Spawning mcp-remote subprocess...');
 
-  const accessToken = await getAccessToken();
-
-  const transport = new StreamableHTTPClientTransport(
-    new URL(MCP_URL),
-    {
-      requestInit: {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    }
-  );
+  const transport = new StdioClientTransport({
+    command: 'npx',
+    args: ['mcp-remote', 'https://app.clara-agent.de/api/mcp'],
+  });
 
   const client = new Client(
     { name: 'clara-dashboard', version: '1.0.0' },
