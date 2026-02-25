@@ -47,10 +47,13 @@ function seedMcpTokenFiles(): void {
     console.log('[MCP] No token env vars found — expecting mcp-remote to handle OAuth locally');
     return;
   }
-  // Re-serialize to strip any control characters or formatting that may have
-  // been introduced when pasting the JSON into Railway environment variables.
-  const tokensNormalized     = JSON.stringify(JSON.parse(tokensJson));
-  const clientInfoNormalized = JSON.stringify(JSON.parse(clientInfoJson));
+  // Strip literal control characters (newlines, carriage returns, etc.) that
+  // Railway's UI may inject when pasting multi-line text, then re-serialize
+  // to produce clean compact JSON before writing to disk.
+  // eslint-disable-next-line no-control-regex
+  const strip = (s: string) => JSON.stringify(JSON.parse(s.replace(/[\x00-\x1F\x7F]/g, '')));
+  const tokensNormalized     = strip(tokensJson);
+  const clientInfoNormalized = strip(clientInfoJson);
   mkdirSync(MCP_AUTH_DIR, { recursive: true });
   writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensNormalized);
   writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_client_info.json`), clientInfoNormalized);
