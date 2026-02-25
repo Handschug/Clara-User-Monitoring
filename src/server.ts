@@ -31,7 +31,7 @@ let mcpClient: Client | null = null;
 // Uses a refresh_token (stored in CLARA_MCP_REFRESH_TOKEN env var) to obtain
 // a fresh access token on each cold start — no browser OAuth flow required.
 const MCP_URL = 'https://app.clara-agent.de/api/mcp';
-const MCP_TOKEN_URL = 'https://app.clara-agent.de/api/auth/token';
+const MCP_TOKEN_URL = 'https://app.clara-agent.de/api/auth/oauth2/token';
 
 async function getAccessToken(): Promise<string> {
   const refreshToken = process.env.CLARA_MCP_REFRESH_TOKEN;
