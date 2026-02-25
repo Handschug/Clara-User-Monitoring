@@ -45,6 +45,8 @@ async function getAccessToken(): Promise<string> {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: clientId,
+    resource: 'https://app.clara-agent.de/',
+    scope: 'openid profile email offline_access',
   });
 
   const res = await fetch(MCP_TOKEN_URL, {
