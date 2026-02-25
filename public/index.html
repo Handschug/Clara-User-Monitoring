@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clara — Activation Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header>
+    <div class="header-logo">
+      <div class="logo-mark"></div>
+      <h1><span>Clara</span> Activation Dashboard</h1>
+    </div>
+
+    <div id="status-indicator">
+      <div id="status-dot"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
+
+    <span id="last-updated">—</span>
+  </header>
+
+  <div class="controls">
+    <div class="filter-toggle">
+      <button id="btn-pilot" class="active">Pilot only</button>
+      <button id="btn-all">All orgs</button>
+    </div>
+
+    <div class="view-toggle">
+      <button id="btn-grid" class="active" title="Card view">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="0" y="0" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="8" y="0" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="0" y="8" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="8" y="8" width="6" height="6" rx="1.5" fill="currentColor"/></svg>
+        Cards
+      </button>
+      <button id="btn-list" title="List view">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="0" y="1" width="14" height="2" rx="1" fill="currentColor"/><rect x="0" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="0" y="11" width="14" height="2" rx="1" fill="currentColor"/></svg>
+        List
+      </button>
+    </div>
+
+    <div id="summary" class="summary"></div>
+  </div>
+
+  <main>
+    <div id="error-banner"></div>
+    <div id="org-grid">
+      <div id="loading">
+        <div class="spinner"></div>
+        Loading…
+      </div>
+    </div>
+  </main>
+
+  <!-- Org detail modal -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <div id="modal-header">
+        <h2 id="modal-title"></h2>
+        <button id="modal-close">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
