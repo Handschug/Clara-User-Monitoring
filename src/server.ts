@@ -28,6 +28,7 @@ const PORT = process.env.PORT ?? 3000;
 // ---------------------------------------------------------------------------
 
 let mcpClient: Client | null = null;
+let mcpConnectPromise: Promise<Client> | null = null;
 
 // ---------------------------------------------------------------------------
 // MCP token file seeding
@@ -37,7 +38,7 @@ let mcpClient: Client | null = null;
 // On Railway (or any remote server) we can't do the browser OAuth flow, so we
 // pre-seed these files from env vars before spawning mcp-remote.
 // The hash is derived from the Clara MCP server URL and is stable.
-const MCP_AUTH_DIR = path.join(homedir(), '.mcp-auth', 'mcp-remote-0.1.37');
+// MCP_REMOTE_CONFIG_DIR env var overrides the base dir (set to /tmp/mcp-auth on Railway).
 const MCP_AUTH_HASH = 'ae2ad9697b94cadb9a498630e77901f0';
 
 function seedMcpTokenFiles(): void {
@@ -53,12 +54,19 @@ function seedMcpTokenFiles(): void {
     return;
   }
 
-  mkdirSync(MCP_AUTH_DIR, { recursive: true });
-  // Write the decoded JSON directly — no further transformation needed
-  writeFileSync(path.join(MCP_AUTH_DIR, `${MCP_AUTH_HASH}_tokens.json`), tokensJson.trim());
+  // Seed into both the locked version dir (0.1.38) and the previous version dir (0.1.37)
+  // as a fallback. mcp-remote uses the version from its own package.json to build the path,
+  // so seeding both dirs makes the token available regardless of minor version bumps.
+  const baseDir = process.env.MCP_REMOTE_CONFIG_DIR ?? path.join(homedir(), '.mcp-auth');
+  for (const ver of ['0.1.38', '0.1.37']) {
+    const dir = path.join(baseDir, `mcp-remote-${ver}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${MCP_AUTH_HASH}_tokens.json`), tokensJson.trim());
+    console.log(`[MCP] Tokens seeded to ${dir}`);
+  }
 
-  // Debug: log first 80 chars of what was written so we can verify on Railway
-  console.log('[MCP] Tokens file written, starts with:', tokensJson.trim().substring(0, 80));
+  // Debug: log first 80 chars so we can verify on Railway
+  console.log('[MCP] Token JSON starts with:', tokensJson.trim().substring(0, 80));
 }
 
 // Seed before the first MCP connection attempt
@@ -68,48 +76,95 @@ seedMcpTokenFiles();
 // MCP client setup
 // ---------------------------------------------------------------------------
 
+function resetMcpClient(): void {
+  try { mcpClient?.close(); } catch (_) {}
+  mcpClient = null;
+  mcpConnectPromise = null;
+  console.log('[MCP] Client reset — will reconnect on next call');
+}
+
 async function getMcpClient(): Promise<Client> {
+  // Fast path: already connected
   if (mcpClient) return mcpClient;
 
-  console.log('[MCP] Spawning mcp-remote subprocess...');
+  // Serialise concurrent callers onto the same in-flight promise to avoid
+  // spawning multiple subprocesses when several requests arrive at once.
+  if (mcpConnectPromise) return mcpConnectPromise;
 
-  const mcpArgs: string[] = ['mcp-remote', 'https://app.clara-agent.de/api/mcp'];
+  mcpConnectPromise = (async () => {
+    console.log('[MCP] Spawning mcp-remote subprocess...');
 
-  // Pass client info directly via CLI arg — bypasses file-based lookup entirely.
-  // Support both plain JSON and Base64-encoded env vars.
-  const clientInfoB64  = process.env.CLARA_MCP_CLIENT_INFO_B64;
-  const clientInfoJson = clientInfoB64
-    ? Buffer.from(clientInfoB64, 'base64').toString('utf-8')
-    : process.env.CLARA_MCP_CLIENT_INFO_JSON;
-  if (clientInfoJson) {
-    mcpArgs.push('--static-oauth-client-info', clientInfoJson.trim());
-    console.log('[MCP] Using --static-oauth-client-info, client_id present:', clientInfoJson.includes('"client_id"'));
-  }
+    // Use the installed binary directly — avoids npx registry resolution overhead.
+    // mcp-remote is a declared dependency so node_modules/.bin/mcp-remote is always present.
+    const mcpArgs: string[] = ['https://app.clara-agent.de/api/mcp'];
 
-  const transport = new StdioClientTransport({
-    command: 'npx',
-    args: mcpArgs,
+    // Pass client info directly via CLI arg — bypasses file-based lookup entirely.
+    // Support both plain JSON and Base64-encoded env vars.
+    const clientInfoB64  = process.env.CLARA_MCP_CLIENT_INFO_B64;
+    const clientInfoJson = clientInfoB64
+      ? Buffer.from(clientInfoB64, 'base64').toString('utf-8')
+      : process.env.CLARA_MCP_CLIENT_INFO_JSON;
+    if (clientInfoJson) {
+      mcpArgs.push('--static-oauth-client-info', clientInfoJson.trim());
+      console.log('[MCP] Using --static-oauth-client-info, client_id present:', clientInfoJson.includes('"client_id"'));
+    }
+
+    const transport = new StdioClientTransport({
+      command: 'node_modules/.bin/mcp-remote',
+      args: mcpArgs,
+      // Propagate MCP_REMOTE_CONFIG_DIR into the subprocess so mcp-remote reads
+      // tokens from the same base dir that seedMcpTokenFiles() wrote them to.
+      env: {
+        ...process.env,
+        MCP_REMOTE_CONFIG_DIR: process.env.MCP_REMOTE_CONFIG_DIR
+          ?? path.join(homedir(), '.mcp-auth'),
+      },
+    });
+
+    const client = new Client(
+      { name: 'clara-dashboard', version: '1.0.0' },
+      { capabilities: {} }
+    );
+
+    await client.connect(transport);
+    mcpClient = client;
+    mcpConnectPromise = null;
+    console.log('[MCP] Connected to clara-analysis server');
+    return client;
+  })().catch((err) => {
+    mcpConnectPromise = null; // allow retry on next call
+    throw err;
   });
 
-  const client = new Client(
-    { name: 'clara-dashboard', version: '1.0.0' },
-    { capabilities: {} }
-  );
-
-  await client.connect(transport);
-  mcpClient = client;
-  console.log('[MCP] Connected to clara-analysis server');
-  return client;
+  return mcpConnectPromise;
 }
 
 /**
  * Call an MCP tool and return its result. Throws on error (no silent failures).
  */
 async function callTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
-  const client = await getMcpClient();
+  let client: Client;
+  try {
+    client = await getMcpClient();
+  } catch (err) {
+    resetMcpClient();
+    throw err;
+  }
+
   console.log(`[MCP] Calling tool: ${toolName}`, Object.keys(args).length ? args : '');
 
-  const result = await client.callTool({ name: toolName, arguments: args });
+  let result;
+  try {
+    result = await client.callTool(
+      { name: toolName, arguments: args },
+      undefined,
+      { timeout: 30_000 }, // explicit 30 s; default SDK timeout is 60 s
+    );
+  } catch (err) {
+    // Reset on timeout or transport error so the next call spawns a fresh subprocess
+    resetMcpClient();
+    throw err;
+  }
 
   if (result.isError) {
     const msg = `MCP tool '${toolName}' returned an error: ${JSON.stringify(result.content)}`;
@@ -565,5 +620,9 @@ app.get('/api/attio/pipeline', async (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[Clara Dashboard] Listening on http://localhost:${PORT}`);
-  console.log('[Clara Dashboard] MCP will connect on first API request (OAuth browser flow on first run)');
+  // Pre-warm MCP connection so the first API request isn't blocked by subprocess
+  // spawn + auth. Failure here is logged but does not crash the process.
+  getMcpClient().catch((err) => {
+    console.error('[MCP] Pre-warm failed:', err instanceof Error ? err.message : String(err));
+  });
 });
