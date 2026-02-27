@@ -56,6 +56,7 @@ export interface EmailAccount {
 
 export interface OrgDetail extends ActivationMetrics {
   members: Member[];
+  memberStats: MemberStats[];
   recentAgentEvents: AgentEvent[];
   eventBreakdown: EventBreakdown[];
   emailAccounts: EmailAccount[];
@@ -66,6 +67,19 @@ export interface Member {
   email: string;
   name: string | null;
   role: string;
+}
+
+export interface MemberStats {
+  memberId: string;
+  email: string;
+  role: string;
+  emailAccountCount: number;
+  totalEmails: number;
+  emailsLast7Days: number;
+  totalAgentEvents: number;
+  agentEventsLast7Days: number;
+  draftsCreated: number;
+  lastAgentEvent: string | null; // ISO timestamp
 }
 
 export interface AgentEvent {
