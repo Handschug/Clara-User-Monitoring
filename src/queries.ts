@@ -236,6 +236,44 @@ export const ORG_EMAIL_SEARCH = (orgId: string, query: string) => `
 `;
 
 /**
+ * Per-member activation stats for a single org.
+ * One row per membership: counts their emails, agent events, and drafts.
+ * Used in the org detail modal to show individual user activity alongside org totals.
+ */
+export const ORG_MEMBER_STATS = (orgId: string) => `
+  SELECT
+    m.id AS member_id,
+    m.user_id,
+    m.role,
+    COALESCE(MIN(ea.email), m.invited_email) AS email,
+
+    -- How many email accounts this user has connected
+    COUNT(DISTINCT ea.id) AS email_account_count,
+
+    -- Email volume for this user
+    COUNT(DISTINCT e.id) AS total_emails,
+    COUNT(DISTINCT CASE WHEN e.received_at >= NOW() - INTERVAL '7 days' AND e.is_draft = false THEN e.id END) AS emails_last_7_days,
+
+    -- Agent activity for this user
+    COUNT(DISTINCT ae.id) AS total_agent_events,
+    COUNT(DISTINCT CASE WHEN ae.occurred_at >= NOW() - INTERVAL '7 days' THEN ae.id END) AS agent_events_last_7_days,
+
+    -- Drafts Clara created for this user
+    COUNT(DISTINCT CASE WHEN ae.event_type = 'draft_created' THEN ae.id END) AS drafts_created,
+
+    -- When Clara last ran for this user
+    MAX(ae.occurred_at) AS last_agent_event
+
+  FROM membership m
+  LEFT JOIN email_account ea ON ea.user_id = m.user_id
+  LEFT JOIN email e ON e.email_account_id = ea.id
+  LEFT JOIN agent_event ae ON ae.email_account_id = ea.id
+  WHERE m.organization_id = '${orgId}'
+  GROUP BY m.id, m.user_id, m.role, m.invited_email
+  ORDER BY total_agent_events DESC, email
+`;
+
+/**
  * Recent agent events for a single org (last 30 days, most recent first).
  * Joins through email_account → membership to scope by org.
  */

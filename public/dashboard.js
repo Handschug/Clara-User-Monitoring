@@ -231,6 +231,7 @@ function renderCard(org) {
           <span class="health-indicator ${org.healthStatus}">
             <span class="hdot"></span>${healthLabel(org.healthStatus)}
           </span>
+          <span class="member-count-chip">${org.memberCount} member${org.memberCount !== 1 ? 's' : ''}</span>
           ${meetingBadge}
         </div>
       </div>
@@ -483,18 +484,53 @@ function renderModalBody(detail) {
       </div>`
     : '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">No agent activity yet.</p>';
 
-  // ── Members ─────────────────────────────────────────────
-  const membersHtml = detail.members.length
-    ? `<table>
-        <thead><tr><th>Email</th><th>Role</th></tr></thead>
-        <tbody>
-          ${detail.members.map(m => `
-            <tr>
-              <td>${escHtml(m.email)}</td>
-              <td>${escHtml(m.role)}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`
+  // ── Per-user stats ──────────────────────────────────────
+  const membersHtml = detail.memberStats && detail.memberStats.length
+    ? `<div class="member-stats-grid">
+        ${detail.memberStats.map(m => {
+          const lastActive = m.lastAgentEvent ? relativeTime(m.lastAgentEvent) : null;
+          const lastActiveDays = m.lastAgentEvent ? daysSince(m.lastAgentEvent) : null;
+          const lastActiveClass = lastActiveDays === null ? 'stale'
+            : lastActiveDays <= 1 ? 'recent'
+            : lastActiveDays <= 7 ? ''
+            : 'stale';
+          const lastActiveText = lastActive
+            ? `<span class="member-last-active ${lastActiveClass}"><span class="dot"></span>Active ${lastActive}</span>`
+            : `<span class="member-last-active stale"><span class="dot"></span>Never active</span>`;
+
+          const hasEmail = m.emailAccountCount > 0;
+          const syncPill = hasEmail
+            ? `<span class="member-pill ok">✓ ${m.emailAccountCount} account${m.emailAccountCount !== 1 ? 's' : ''}</span>`
+            : `<span class="member-pill muted">No email connected</span>`;
+
+          return `
+            <div class="member-stat-card">
+              <div class="member-stat-header">
+                <div class="member-stat-email">${escHtml(m.email)}</div>
+                <span class="member-role-badge">${escHtml(m.role)}</span>
+              </div>
+              <div class="member-stat-sub">${syncPill}</div>
+              <div class="member-stat-metrics">
+                <div class="member-metric">
+                  <span class="member-metric-value ${m.totalEmails > 0 ? '' : 'danger'}">${m.totalEmails.toLocaleString('de-DE')}</span>
+                  <span class="member-metric-label">Emails</span>
+                  <span class="member-metric-sub">${m.emailsLast7Days} this week</span>
+                </div>
+                <div class="member-metric">
+                  <span class="member-metric-value ${m.agentEventsLast7Days > 0 ? 'positive' : (m.totalAgentEvents > 0 ? '' : 'danger')}">${m.agentEventsLast7Days}</span>
+                  <span class="member-metric-label">Events 7d</span>
+                  <span class="member-metric-sub">${m.totalAgentEvents} total</span>
+                </div>
+                <div class="member-metric">
+                  <span class="member-metric-value ${m.draftsCreated > 0 ? 'purple' : ''}">${m.draftsCreated}</span>
+                  <span class="member-metric-label">Drafts</span>
+                  <span class="member-metric-sub">by Clara</span>
+                </div>
+              </div>
+              ${lastActiveText}
+            </div>`;
+        }).join('')}
+      </div>`
     : '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">No members found.</p>';
 
   // ── Attio deal section ──────────────────────────────────
@@ -536,6 +572,7 @@ function renderModalBody(detail) {
 
     <div class="section-title" style="margin-top:20px">Members (${detail.memberCount})</div>
     ${membersHtml}
+
   `;
 
   // Wire up email search

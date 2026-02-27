@@ -11,13 +11,14 @@ import type {
   ActivationResponse,
   ActivationMetrics,
   OrgDetail,
+  MemberStats,
   McpSqlResult,
   EmailSearchResponse,
   EmailSearchResult,
   AttioDeal,
   AttioPipelineResponse,
 } from './types.js';
-import { FULL_ACTIVATION_SUMMARY, FULL_ACTIVATION_SUMMARY_FOR_ORG, ORG_MEMBERS, ORG_RECENT_AGENT_EVENTS, ORG_EVENT_BREAKDOWN, ORG_EMAIL_ACCOUNTS, ORG_EMAIL_SEARCH } from './queries.js';
+import { FULL_ACTIVATION_SUMMARY, FULL_ACTIVATION_SUMMARY_FOR_ORG, ORG_MEMBERS, ORG_MEMBER_STATS, ORG_RECENT_AGENT_EVENTS, ORG_EVENT_BREAKDOWN, ORG_EMAIL_ACCOUNTS, ORG_EMAIL_SEARCH } from './queries.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -442,8 +443,9 @@ app.get('/api/org/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const [memberRows, eventRows, activationRows, breakdownRows, accountRows] = await Promise.all([
+    const [memberRows, memberStatsRows, eventRows, activationRows, breakdownRows, accountRows] = await Promise.all([
       sqlQuery(ORG_MEMBERS(id)),
+      sqlQuery(ORG_MEMBER_STATS(id)),
       sqlQuery(ORG_RECENT_AGENT_EVENTS(id)),
       sqlQuery(FULL_ACTIVATION_SUMMARY_FOR_ORG(id)),
       sqlQuery(ORG_EVENT_BREAKDOWN(id)),
@@ -508,6 +510,18 @@ app.get('/api/org/:id', async (req, res) => {
         email: String(m.email),
         name: m.name ? String(m.name) : null,
         role: String(m.role),
+      })),
+      memberStats: memberStatsRows.map((s): MemberStats => ({
+        memberId: String(s.member_id),
+        email: String(s.email ?? ''),
+        role: String(s.role),
+        emailAccountCount: Number(s.email_account_count ?? 0),
+        totalEmails: Number(s.total_emails ?? 0),
+        emailsLast7Days: Number(s.emails_last_7_days ?? 0),
+        totalAgentEvents: Number(s.total_agent_events ?? 0),
+        agentEventsLast7Days: Number(s.agent_events_last_7_days ?? 0),
+        draftsCreated: Number(s.drafts_created ?? 0),
+        lastAgentEvent: s.last_agent_event ? String(s.last_agent_event) : null,
       })),
       recentAgentEvents: eventRows.map((e) => ({
         id: String(e.id),

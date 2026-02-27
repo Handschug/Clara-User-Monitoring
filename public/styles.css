@@ -293,6 +293,18 @@ header h1 span {
   background: currentColor;
 }
 
+/* Member count chip in card header */
+.member-count-chip {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
 /* Next meeting badge in header */
 .meeting-badge {
   font-size: 11px;
@@ -962,4 +974,133 @@ header h1 span {
 }
 
 .attio-next-meeting strong { color: var(--text); }
+
+/* ── Per-member stat cards in modal ─────────────────────── */
+
+.member-stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.member-stat-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.member-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.member-stat-email {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-role-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--purple-light);
+  color: var(--purple);
+  border: 1px solid var(--purple-mid);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.member-stat-sub {
+  margin-top: -4px;
+}
+
+.member-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.member-pill.ok    { background: var(--green-bg); color: var(--green); }
+.member-pill.muted { background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); }
+
+.member-stat-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.member-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 12px;
+  border-right: 1px solid var(--border);
+}
+
+.member-metric:last-child { border-right: none; }
+
+.member-metric-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.member-metric-value.positive { color: var(--green); }
+.member-metric-value.danger   { color: var(--red); }
+.member-metric-value.purple   { color: var(--purple); }
+
+.member-metric-label {
+  font-size: 9px;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.member-metric-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.member-last-active {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.member-last-active .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  flex-shrink: 0;
+}
+
+.member-last-active.recent       { color: var(--green); font-weight: 600; }
+.member-last-active.recent .dot  { background: var(--green); }
+.member-last-active.stale        { color: var(--red); }
+.member-last-active.stale .dot   { background: var(--red); }
 
